@@ -6,6 +6,8 @@ Thank you for helping keep these projects and the people who use them safe.
 
 Security fixes are released against the **latest release** of each project. Older releases are not patched, so keeping up to date is the most reliable protection.
 
+Where releases are published, and any support or escalation details specific to a project, are in that repository's README. Where the README differs from this file on those points, the README applies.
+
 | Version | Supported |
 | ------- | --------- |
 | Latest release | ✅ |
