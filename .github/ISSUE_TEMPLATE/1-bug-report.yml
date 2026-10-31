@@ -1,0 +1,89 @@
+name: 🐞 Bug report
+description: Something isn't working as expected.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. A few quick notes before you start:
+
+        - **Support questions** ("how do I…?") belong in GitHub Discussions or the project's documented support channel.
+        - **Security vulnerabilities** must not be reported here. Use the private report form linked from the issue chooser instead.
+        - Please search [open and closed issues](../issues?q=is%3Aissue) first. If one already covers your bug, add a comment there instead.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched existing open and closed issues and did not find this bug already reported.
+          required: true
+        - label: I am running the latest released version.
+          required: true
+        - label: I reproduced the bug with a minimal setup (or I explain below why I could not).
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug.
+      placeholder: When I …, it … instead of ….
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps so a maintainer can see the bug on a fresh install.
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. Observe …
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release or commit you are running.
+      placeholder: "e.g. 1.4.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, runtime or language versions, browser, and anything else relevant.
+      placeholder: |
+        - OS: macOS 15
+        - Runtime: Node 22
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, error messages, or logs
+      description: |
+        Drag and drop images or recordings here. Paste errors or log lines inside a code block.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else?
+      description: Workarounds you found, when the bug started (e.g. after an update), or other context.
