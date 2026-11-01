@@ -56,7 +56,7 @@ on:
         default: alerts
     secrets:
       WORDFENCE_API_KEY:
-        description: Wordfence Intelligence API key. The Wordfence scan is skipped when unset.
+        description: Wordfence Intelligence API key. Required when wordfence is true; the job fails without it.
         required: false
       SLACK_BOT_TOKEN:
         description: Slack bot token. Notifications are skipped when unset.
@@ -202,8 +202,11 @@ jobs:
           npm=$(status_of "${NPM_ENABLED:-false}" "${NPM_STATUS:-}")
           wordfence=$(status_of "${WORDFENCE_ENABLED:-false}" "${WORDFENCE_STATUS:-}")
 
+          # The caller asked for Wordfence, so a missing key is a misconfiguration. Treating it as an
+          # error keeps a partial report from overwriting earlier Wordfence findings in the issue.
           if [ "$wordfence" = "skipped" ]; then
-            echo "::notice::The Wordfence scan was skipped because no API key is set."
+            echo "::error::wordfence is true but the WORDFENCE_API_KEY secret is not set."
+            wordfence=error
           fi
 
           : > "${scan_dir}/ids.txt"
