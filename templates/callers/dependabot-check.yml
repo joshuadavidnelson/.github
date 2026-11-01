@@ -1,0 +1,20 @@
+# Drop into .github/workflows/ and replace __SHA__ with a full commit SHA of joshuadavidnelson/.github.
+
+name: Dependabot check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  dependabot-check:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    uses: joshuadavidnelson/.github/.github/workflows/dependabot-check.yml@__SHA__ # main
+    secrets:
+      DEPENDABOT_ALERTS_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}

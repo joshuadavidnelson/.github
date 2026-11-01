@@ -1,0 +1,16 @@
+# Drop into .github/workflows/ and replace __SHA__ with a full commit SHA of joshuadavidnelson/.github.
+
+name: Workflow lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  workflow-lint:
+    permissions:
+      contents: read
+    uses: joshuadavidnelson/.github/.github/workflows/workflow-lint.yml@__SHA__ # main
