@@ -119,6 +119,14 @@ def _ranges(software):
     return ranges
 
 
+def _release_version(name, version):
+    """Reject Composer branch and alias versions, which sort below every numeric bound and would read as clean."""
+    lowered = version.lower()
+    if not version[:1].isdigit() or lowered.endswith("-dev") or " as " in lowered:
+        raise ScanError(f"cannot check {name}: {version!r} is a branch or alias version, not a release")
+    return version
+
+
 def load_packages(lock_path):
     """Map composer.lock packages to (type, slug, version, composer name, is_extra) tuples."""
     try:
@@ -132,11 +140,11 @@ def load_packages(lock_path):
         if not version:
             continue
         if name.startswith("wpackagist-plugin/"):
-            packages.append(("plugin", name.split("/", 1)[1], version, name, False))
+            packages.append(("plugin", name.split("/", 1)[1], _release_version(name, version), name, False))
         elif name.startswith("wpackagist-theme/"):
-            packages.append(("theme", name.split("/", 1)[1], version, name, False))
+            packages.append(("theme", name.split("/", 1)[1], _release_version(name, version), name, False))
         elif name in CORE_PACKAGES:
-            packages.append(("core", "wordpress", version, name, False))
+            packages.append(("core", "wordpress", _release_version(name, version), name, False))
     return _unique(packages)
 
 
@@ -150,10 +158,11 @@ def parse_extras(text, wp_core=""):
         if not match:
             raise ScanError(f"invalid extra-slugs entry {token!r}; expected plugin:slug@version or theme:slug@version")
         kind, slug, version = match.groups()
-        packages.append((kind, slug, version.lstrip("vV"), f"{kind}:{slug}", True))
+        version = _release_version(f"{kind}:{slug}", version.lstrip("vV"))
+        packages.append((kind, slug, version, f"{kind}:{slug}", True))
     core = (wp_core or "").strip().lstrip("vV")
     if core:
-        packages.append(("core", "wordpress", core, "wordpress", True))
+        packages.append(("core", "wordpress", _release_version("wordpress", core), "wordpress", True))
     return packages
 
 

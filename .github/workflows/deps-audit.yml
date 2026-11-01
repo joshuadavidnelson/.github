@@ -385,11 +385,22 @@ jobs:
           COMPOSER_STATUS: ${{ steps.summary.outputs.composer }}
           NPM_STATUS: ${{ steps.summary.outputs.npm }}
           WORDFENCE_STATUS: ${{ steps.summary.outputs.wordfence }}
+          ISSUE_OUTCOME: ${{ steps.issue.outcome }}
         run: |
+          # The run summary is the one place every event, including pull requests, can read the report.
+          body="${RUNNER_TEMP}/scan/body.md"
+          if [ -s "$body" ]; then
+            head -c 500000 "$body" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No audit report was generated; see the step logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          where="see the run summary"
+          [ "$ISSUE_OUTCOME" = "success" ] && where="see the run summary and the security-scan issue"
           failed=0
           for pair in "Composer audit:${COMPOSER_STATUS}" "npm audit:${NPM_STATUS}" "Wordfence scan:${WORDFENCE_STATUS}"; do
             case "${pair#*:}" in
-              findings) echo "::error::${pair%%:*} reported vulnerabilities; see the security-scan issue."; failed=1 ;;
+              findings) echo "::error::${pair%%:*} reported vulnerabilities; ${where}."; failed=1 ;;
               error | "") echo "::error::${pair%%:*} did not complete; the result is unknown."; failed=1 ;;
             esac
           done

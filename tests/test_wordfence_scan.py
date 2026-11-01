@@ -119,6 +119,48 @@ class CoreAndLockTest(unittest.TestCase):
                          [("plugin:aaa", "3"), ("plugin:bbb", "1"), ("plugin:bbb", "2")])
 
 
+class BranchVersionTest(unittest.TestCase):
+    BAD = ("dev-trunk", "dev-main", "1.x-dev", "dev-feature as 1.2.0", "1.0.x-dev")
+
+    def test_lock_branch_versions_are_errors_naming_package_and_version(self):
+        for bad in self.BAD:
+            for name in ("wpackagist-plugin/some-plugin", "wpackagist-theme/some-theme", "johnpbloch/wordpress-core"):
+                with self.subTest(version=bad, name=name), tempfile.TemporaryDirectory() as tmp:
+                    path = os.path.join(tmp, "composer.lock")
+                    with open(path, "w", encoding="utf-8") as handle:
+                        json.dump({"packages": [{"name": name, "version": bad}]}, handle)
+                    with self.assertRaises(scan.ScanError) as ctx:
+                        scan.load_packages(path)
+                    self.assertIn(name, str(ctx.exception))
+                    self.assertIn(bad, str(ctx.exception))
+
+    def test_unrelated_branch_packages_in_lock_are_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "composer.lock")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"packages": [{"name": "acme/lib", "version": "dev-main"}]}, handle)
+            self.assertEqual(scan.load_packages(path), [])
+
+    def test_extra_and_core_branch_versions_are_errors(self):
+        with self.assertRaises(scan.ScanError) as ctx:
+            scan.parse_extras("plugin:my-fork@dev-trunk")
+        self.assertIn("plugin:my-fork", str(ctx.exception))
+        self.assertIn("dev-trunk", str(ctx.exception))
+        with self.assertRaises(scan.ScanError):
+            scan.parse_extras("theme:t@1.x-dev")
+        with self.assertRaises(scan.ScanError) as ctx:
+            scan.parse_extras("", "dev-main")
+        self.assertIn("dev-main", str(ctx.exception))
+
+    def test_main_exits_two_for_branch_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "composer.lock")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"packages": [{"name": "wpackagist-plugin/x", "version": "dev-trunk"}]}, handle)
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(scan.main([path, "--feed-file", FEED]), 2)
+
+
 class ParseExtrasTest(unittest.TestCase):
     def test_entries_and_core(self):
         packages = scan.parse_extras("plugin:my-fork@v1.2.3, theme:my-theme@2.0\nplugin:other@0.1", "6.8.1")
