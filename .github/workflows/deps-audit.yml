@@ -1,0 +1,391 @@
+# Audits locked dependencies for known vulnerabilities and keeps one open issue labelled
+# `security-scan` as the record: opened or updated on findings, closed on a clean run. Slack is
+# told only when the issue opens, its findings change, or it closes. The job fails on findings
+# or errors so the run shows red. Pull request runs skip the issue and Slack. When any scan
+# errors, the issue is left alone because the result is unknown.
+#
+# - Composer: `composer audit --locked`, which covers packagist advisories.
+# - npm: `npm audit --omit=dev`, production dependencies only.
+# - Wordfence: wpackagist plugins, themes and WordPress core, which packagist advisories miss.
+#   Needs a free WORDFENCE_API_KEY from https://www.wordfence.com/threat-intel/.
+
+name: Dependency audit
+
+on:
+  workflow_call:
+    inputs:
+      composer:
+        description: "Run the Composer audit: auto (when composer.lock exists), true or false."
+        type: string
+        default: auto
+      npm:
+        description: "Run the npm audit: auto (when package-lock.json exists), true or false."
+        type: string
+        default: auto
+      wordfence:
+        description: Run the Wordfence scan on composer.lock.
+        type: boolean
+        default: false
+      composer-lock:
+        description: Path to composer.lock for the Wordfence scan.
+        type: string
+        default: composer.lock
+      extra-slugs:
+        description: Extra Wordfence packages, as space or newline separated plugin:slug@version or theme:slug@version entries.
+        type: string
+        default: ''
+      wp-core:
+        description: WordPress core version for the Wordfence scan, in addition to the lock file.
+        type: string
+        default: ''
+      php-version:
+        description: PHP version for the Composer audit.
+        type: string
+        default: "8.3"
+      node-version:
+        description: Node version for the npm audit.
+        type: string
+        default: "22"
+      slack-channel:
+        description: Project channel for warning and info messages.
+        type: string
+        default: ''
+      alerts-channel:
+        description: Channel for critical messages.
+        type: string
+        default: alerts
+    secrets:
+      WORDFENCE_API_KEY:
+        description: Wordfence Intelligence API key. The Wordfence scan is skipped when unset.
+        required: false
+      SLACK_BOT_TOKEN:
+        description: Slack bot token. Notifications are skipped when unset.
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: deps-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    env:
+      SCAN_LABEL: security-scan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Decide which audits run
+        id: detect
+        env:
+          COMPOSER_INPUT: ${{ inputs.composer }}
+          NPM_INPUT: ${{ inputs.npm }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          resolve() {
+            case "$1" in
+              true | false) echo "$1" ;;
+              auto) [ -f "$2" ] && echo true || echo false ;;
+              *) echo "::error::Invalid value '$1'; expected auto, true or false." >&2; return 1 ;;
+            esac
+          }
+          composer=$(resolve "$COMPOSER_INPUT" composer.lock)
+          npm=$(resolve "$NPM_INPUT" package-lock.json)
+          echo "composer=${composer}" >> "$GITHUB_OUTPUT"
+          echo "npm=${npm}" >> "$GITHUB_OUTPUT"
+          # Only scheduled, manual and default-branch runs touch the issue or Slack; pull request
+          # runs report through the check result.
+          record=false
+          case "$EVENT_NAME" in
+            schedule | workflow_dispatch) record=true ;;
+            push) [ "$REF" = "refs/heads/${DEFAULT_BRANCH}" ] && record=true ;;
+          esac
+          echo "record=${record}" >> "$GITHUB_OUTPUT"
+          mkdir -p "${RUNNER_TEMP}/scan"
+
+      # --locked audits composer.lock directly, so nothing is installed.
+      - name: Set up PHP and Composer
+        if: steps.detect.outputs.composer == 'true'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Composer audit
+        id: composer
+        if: steps.detect.outputs.composer == 'true'
+        run: |
+          out="${RUNNER_TEMP}/scan/composer.json"
+          # Exit status 1 means advisories were found; the JSON decides, not the status.
+          composer audit --locked --abandoned=report --format=json > "$out" || true
+          if ! jq -e 'type == "object" and has("advisories")' "$out" > /dev/null; then
+            echo "::error::composer audit did not produce an advisories report."
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(jq '[.advisories[]?[]?] | length' "$out")" -gt 0 ]; then
+            echo "status=findings" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=clean" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.detect.outputs.npm == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: npm audit
+        id: npm
+        if: steps.detect.outputs.npm == 'true'
+        run: |
+          out="${RUNNER_TEMP}/scan/npm.json"
+          # Exit status 1 means vulnerabilities were found; the JSON decides, not the status.
+          npm audit --json --omit=dev > "$out" || true
+          if ! jq -e '.metadata.vulnerabilities.total != null' "$out" > /dev/null 2>&1; then
+            echo "::error::npm audit did not produce a vulnerability report."
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(jq '.metadata.vulnerabilities.total' "$out")" -gt 0 ]; then
+            echo "status=findings" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=clean" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wordfence scan
+        id: wordfence
+        if: inputs.wordfence
+        uses: joshuadavidnelson/.github/actions/wordfence-scan@v1
+        with:
+          api-key: ${{ secrets.WORDFENCE_API_KEY }}
+          composer-lock: ${{ inputs.composer-lock }}
+          extra-slugs: ${{ inputs.extra-slugs }}
+          wp-core: ${{ inputs.wp-core }}
+
+      # Runs after an error too, so a failing scan cannot hide another scan's findings.
+      - name: Summarize findings
+        id: summary
+        if: ${{ !cancelled() }}
+        env:
+          COMPOSER_ENABLED: ${{ steps.detect.outputs.composer }}
+          NPM_ENABLED: ${{ steps.detect.outputs.npm }}
+          WORDFENCE_ENABLED: ${{ inputs.wordfence }}
+          COMPOSER_STATUS: ${{ steps.composer.outputs.status }}
+          NPM_STATUS: ${{ steps.npm.outputs.status }}
+          WORDFENCE_STATUS: ${{ steps.wordfence.outputs.status }}
+          WORDFENCE_JSON: ${{ steps.wordfence.outputs.json-file }}
+          WORDFENCE_REPORT: ${{ steps.wordfence.outputs.report-file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          scan_dir="${RUNNER_TEMP}/scan"
+          mkdir -p "$scan_dir"
+          today=$(date -u +%F)
+
+          # A step that never reported (for example a failed setup) counts as an error.
+          status_of() {
+            if [ "$1" != "true" ]; then echo off; elif [ -z "$2" ]; then echo error; else echo "$2"; fi
+          }
+          composer=$(status_of "${COMPOSER_ENABLED:-false}" "${COMPOSER_STATUS:-}")
+          npm=$(status_of "${NPM_ENABLED:-false}" "${NPM_STATUS:-}")
+          wordfence=$(status_of "${WORDFENCE_ENABLED:-false}" "${WORDFENCE_STATUS:-}")
+
+          if [ "$wordfence" = "skipped" ]; then
+            echo "::notice::The Wordfence scan was skipped because no API key is set."
+          fi
+
+          : > "${scan_dir}/ids.txt"
+          : > "${scan_dir}/slack.md"
+          {
+            echo "Latest scan: ${today} ([run](${RUN_URL}))."
+            echo
+          } > "${scan_dir}/body.md"
+          high=0
+          total=0
+
+          if [ "$composer" = "findings" ]; then
+            f="${scan_dir}/composer.json"
+            {
+              echo "## Composer audit"
+              echo
+              jq -r '.advisories[]?[]? |
+                "- `\(.packageName)` \(.affectedVersions): \(.title | gsub("[\\r\\n|`@]"; " ")) (\(.cve // "no CVE")) \(.link // "")"' "$f"
+              echo
+            } >> "${scan_dir}/body.md"
+            jq -r '.advisories[]?[]? |
+              "• `\(.packageName)` \(.affectedVersions): \(.title | gsub("[\\r\\n|`@<>&]"; " "))"' "$f" >> "${scan_dir}/slack.md"
+            jq -r '.advisories[]?[]? | "composer:\(.packageName):\(.advisoryId)"' "$f" >> "${scan_dir}/ids.txt"
+            total=$((total + $(jq '[.advisories[]?[]?] | length' "$f")))
+            high=$((high + $(jq '[.advisories[]?[]? | select((.severity // "") | ascii_downcase | IN("high", "critical"))] | length' "$f")))
+          fi
+
+          if [ "$npm" = "findings" ]; then
+            f="${scan_dir}/npm.json"
+            {
+              echo "## npm audit (production dependencies)"
+              echo
+              jq -r '.vulnerabilities | to_entries[] |
+                "- `\(.key | gsub("[\\r\\n|`]"; " "))` \(.value.severity): affects \(.value.range // "unknown range")"' "$f"
+              echo
+            } >> "${scan_dir}/body.md"
+            jq -r '.vulnerabilities | to_entries[] |
+              "• `\(.key | gsub("[\\r\\n|`<>&]"; " "))` \(.value.severity)"' "$f" >> "${scan_dir}/slack.md"
+            jq -r '.vulnerabilities | to_entries[] | "npm:\(.key):\(.value.severity)"' "$f" >> "${scan_dir}/ids.txt"
+            total=$((total + $(jq '.metadata.vulnerabilities.total' "$f")))
+            high=$((high + $(jq '(.metadata.vulnerabilities.high // 0) + (.metadata.vulnerabilities.critical // 0)' "$f")))
+          fi
+
+          if [ "$wordfence" = "findings" ]; then
+            f="$WORDFENCE_JSON"
+            cat "$WORDFENCE_REPORT" >> "${scan_dir}/body.md"
+            jq -r '.findings[] |
+              "• `\(.package)` \(.version): \(.title | gsub("[\\r\\n|`@<>&]"; " "))"' "$f" >> "${scan_dir}/slack.md"
+            jq -r '.findings[] | "wordfence:\(.package):\(.version):\(.id)"' "$f" >> "${scan_dir}/ids.txt"
+            total=$((total + $(jq '.findings | length' "$f")))
+            high=$((high + $(jq '[.findings[] | select((.cvss_score // 0) >= 7)] | length' "$f")))
+          fi
+
+          # Closing needs every enabled scan to be clean; a skipped or failed scan proves nothing.
+          state=incomplete
+          enabled=0
+          for s in "$composer" "$npm" "$wordfence"; do
+            [ "$s" != "off" ] && enabled=$((enabled + 1))
+          done
+          errored=""
+          [ "$composer" = "error" ] && errored="${errored} Composer audit"
+          [ "$npm" = "error" ] && errored="${errored} npm audit"
+          [ "$wordfence" = "error" ] && errored="${errored} Wordfence scan"
+          if [ -n "$errored" ]; then
+            # Findings from the scans that did run never rewrite the issue while another scan is unknown.
+            state=error
+            echo "::error::Skipping the issue and Slack because these scans errored:${errored}."
+          elif [ "$total" -gt 0 ]; then
+            state=findings
+          elif [ "$enabled" -eq 0 ]; then
+            echo "::notice::No audit applies: no lock file was found and Wordfence is off."
+            state=none
+          elif [ "$composer" != "error" ] && [ "$composer" != "skipped" ] &&
+               [ "$npm" != "error" ] && [ "$npm" != "skipped" ] &&
+               [ "$wordfence" != "error" ] && [ "$wordfence" != "skipped" ]; then
+            state=clean
+          fi
+
+          # The fingerprint covers the set of findings, not the run date.
+          sort "${scan_dir}/ids.txt" -o "${scan_dir}/ids.txt"
+          fingerprint=$(sha256sum "${scan_dir}/ids.txt" | cut -d' ' -f1)
+
+          # GitHub caps issue bodies at 65536 characters.
+          head -c 60000 "${scan_dir}/body.md" > "${scan_dir}/issue.md"
+          printf '\n<!-- scan-fingerprint: %s -->\n' "$fingerprint" >> "${scan_dir}/issue.md"
+
+          {
+            echo "state=${state}"
+            echo "fingerprint=${fingerprint}"
+            echo "total=${total}"
+            echo "high=${high}"
+            echo "composer=${composer}"
+            echo "npm=${npm}"
+            echo "wordfence=${wordfence}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open, update or close the tracking issue
+        id: issue
+        if: ${{ !cancelled() && steps.detect.outputs.record == 'true' && (steps.summary.outputs.state == 'findings' || steps.summary.outputs.state == 'clean') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.summary.outputs.state }}
+          FINGERPRINT: ${{ steps.summary.outputs.fingerprint }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          scan_dir="${RUNNER_TEMP}/scan"
+          today=$(date -u +%F)
+
+          gh label create "$SCAN_LABEL" --color B60205 --description "Dependency vulnerability scan" --force > /dev/null
+          number=$(gh issue list --label "$SCAN_LABEL" --state open --author "app/github-actions" --json number --jq '.[0].number // empty' --limit 1)
+
+          echo "event=none" >> "$GITHUB_OUTPUT"
+          if [ "$STATE" = "clean" ]; then
+            if [ -n "$number" ]; then
+              url=$(gh issue view "$number" --json url --jq '.url')
+              gh issue comment "$number" --body "Clean as of ${today} ([run](${RUN_URL}))." > /dev/null
+              gh issue close "$number" --reason completed > /dev/null
+              echo "event=closed" >> "$GITHUB_OUTPUT"
+              echo "url=${url}" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          if [ -z "$number" ]; then
+            url=$(gh issue create --title "Dependency vulnerabilities found by the scan" \
+              --label "$SCAN_LABEL" --body-file "${scan_dir}/issue.md")
+            echo "event=opened" >> "$GITHUB_OUTPUT"
+            echo "url=${url}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous=$(gh issue view "$number" --json body --jq '.body' |
+            sed -n 's/.*scan-fingerprint: \([0-9a-f]*\).*/\1/p' | head -n 1)
+          url=$(gh issue view "$number" --json url --jq '.url')
+          gh issue edit "$number" --body-file "${scan_dir}/issue.md" > /dev/null
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+          if [ "$previous" != "$FINGERPRINT" ]; then
+            gh issue comment "$number" --body "The set of findings changed on ${today}; the description has the latest report ([run](${RUN_URL}))." > /dev/null
+            echo "event=changed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Slack of findings
+        if: >-
+          ${{ !cancelled() && steps.detect.outputs.record == 'true' &&
+          (steps.issue.outputs.event == 'opened' || steps.issue.outputs.event == 'changed') }}
+        uses: joshuadavidnelson/.github/actions/slack-notify@v1
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ inputs.slack-channel }}
+          alerts-channel: ${{ inputs.alerts-channel }}
+          severity: ${{ steps.summary.outputs.high != '0' && 'critical' || 'warning' }}
+          title: ${{ steps.issue.outputs.event == 'opened' && 'Dependency vulnerabilities found' || 'Dependency vulnerabilities changed' }}
+          body-file: ${{ runner.temp }}/scan/slack.md
+          link-url: ${{ steps.issue.outputs.url }}
+          link-text: View issue
+
+      - name: Notify Slack of resolution
+        if: >-
+          ${{ !cancelled() && steps.detect.outputs.record == 'true' && steps.issue.outputs.event == 'closed' }}
+        uses: joshuadavidnelson/.github/actions/slack-notify@v1
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ inputs.slack-channel }}
+          alerts-channel: ${{ inputs.alerts-channel }}
+          severity: info
+          title: Dependency vulnerabilities resolved
+          body: The latest scan came back clean and the security-scan issue is closed.
+          link-url: ${{ steps.issue.outputs.url }}
+          link-text: View issue
+
+      - name: Fail on findings or errors
+        if: ${{ !cancelled() }}
+        env:
+          COMPOSER_STATUS: ${{ steps.summary.outputs.composer }}
+          NPM_STATUS: ${{ steps.summary.outputs.npm }}
+          WORDFENCE_STATUS: ${{ steps.summary.outputs.wordfence }}
+        run: |
+          failed=0
+          for pair in "Composer audit:${COMPOSER_STATUS}" "npm audit:${NPM_STATUS}" "Wordfence scan:${WORDFENCE_STATUS}"; do
+            case "${pair#*:}" in
+              findings) echo "::error::${pair%%:*} reported vulnerabilities; see the security-scan issue."; failed=1 ;;
+              error | "") echo "::error::${pair%%:*} did not complete; the result is unknown."; failed=1 ;;
+            esac
+          done
+          exit "$failed"

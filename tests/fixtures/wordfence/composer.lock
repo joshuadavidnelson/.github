@@ -1,0 +1,14 @@
+{
+	"packages": [
+		{"name": "composer/installers", "version": "v2.3.0", "type": "composer-plugin"},
+		{"name": "johnpbloch/wordpress", "version": "7.1.4", "type": "package"},
+		{"name": "johnpbloch/wordpress-core", "version": "7.1.4", "type": "wordpress-core"},
+		{"name": "wpackagist-plugin/redirection", "version": "5.10.1", "type": "wordpress-plugin"},
+		{"name": "wpackagist-plugin/wordpress-seo", "version": "v28.8", "type": "wordpress-plugin"},
+		{"name": "wpackagist-plugin/two-factor", "version": "0.17.0", "type": "wordpress-plugin"},
+		{"name": "wpackagist-theme/twentytwentyfour", "version": "1.6", "type": "wordpress-theme"}
+	],
+	"packages-dev": [
+		{"name": "wpackagist-plugin/not-deployed", "version": "1.0.0", "type": "wordpress-plugin"}
+	]
+}
