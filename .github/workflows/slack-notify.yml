@@ -1,0 +1,68 @@
+name: Slack notify
+
+on:
+  workflow_call:
+    inputs:
+      slack-channel:
+        description: Project channel for warning and info messages.
+        type: string
+        default: ''
+      alerts-channel:
+        description: Channel for critical messages.
+        type: string
+        default: alerts
+      severity:
+        description: One of critical, warning, info.
+        type: string
+        default: info
+      title:
+        description: Message headline.
+        type: string
+        required: true
+      body:
+        description: Optional mrkdwn body.
+        type: string
+        default: ''
+      link-url:
+        description: Button target. Defaults to the calling run.
+        type: string
+        default: ''
+      link-text:
+        description: Button label.
+        type: string
+        default: View run
+    secrets:
+      SLACK_BOT_TOKEN:
+        required: false
+    outputs:
+      ts:
+        description: Message timestamp, empty when skipped.
+        value: ${{ jobs.notify.outputs.ts }}
+      channel:
+        description: Channel the message went to, empty when skipped.
+        value: ${{ jobs.notify.outputs.channel }}
+
+permissions: {}
+
+jobs:
+  notify:
+    name: notify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      ts: ${{ steps.slack.outputs.ts }}
+      channel: ${{ steps.slack.outputs.channel }}
+    steps:
+      - name: Post to Slack
+        id: slack
+        uses: joshuadavidnelson/.github/actions/slack-notify@v1
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ inputs.slack-channel }}
+          alerts-channel: ${{ inputs.alerts-channel }}
+          severity: ${{ inputs.severity }}
+          title: ${{ inputs.title }}
+          body: ${{ inputs.body }}
+          link-url: ${{ inputs.link-url }}
+          link-text: ${{ inputs.link-text }}
