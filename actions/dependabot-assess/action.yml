@@ -1,0 +1,57 @@
+name: Dependabot assess
+description: Rate a Dependabot pull request as low-risk, review, or risky and write a review comment. Never approves or merges.
+
+inputs:
+  dependencies-json:
+    description: The updated-dependencies-json output of dependabot/fetch-metadata.
+    required: true
+  pr-title:
+    description: Pull request title.
+    required: true
+  alert-state:
+    description: The alert-state output of dependabot/fetch-metadata.
+    required: false
+    default: ''
+  ghsa-id:
+    description: The ghsa-id output of dependabot/fetch-metadata.
+    required: false
+    default: ''
+
+outputs:
+  verdict:
+    description: One of low-risk, review, risky.
+    value: ${{ steps.assess.outputs.verdict }}
+  label:
+    description: Label matching the verdict.
+    value: ${{ steps.assess.outputs.label }}
+  security:
+    description: true when the update addresses a security advisory.
+    value: ${{ steps.assess.outputs.security }}
+  comment-file:
+    description: Path to the rendered markdown comment.
+    value: ${{ steps.assess.outputs.comment-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Assess
+      id: assess
+      shell: bash
+      env:
+        DEPENDENCIES_JSON: ${{ inputs.dependencies-json }}
+        PR_TITLE: ${{ inputs.pr-title }}
+        ALERT_STATE: ${{ inputs.alert-state }}
+        GHSA_ID: ${{ inputs.ghsa-id }}
+        ACTION_PATH: ${{ github.action_path }}
+        RUNNER_TEMP_DIR: ${{ runner.temp }}
+      run: |
+        set -euo pipefail
+        export COMMENT_FILE="${RUNNER_TEMP_DIR}/dependabot-check-comment.md"
+        result="$(python3 "$ACTION_PATH/assess.py")"
+        echo "$result"
+        {
+          echo "verdict=$(jq -r .verdict <<<"$result")"
+          echo "label=$(jq -r .label <<<"$result")"
+          echo "security=$(jq -r .security <<<"$result")"
+          echo "comment-file=${COMMENT_FILE}"
+        } >> "$GITHUB_OUTPUT"
