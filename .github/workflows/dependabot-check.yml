@@ -1,0 +1,100 @@
+name: Dependabot check
+
+# Call from a pull_request job (opened, synchronize, reopened). The caller job
+# must grant:
+#   permissions:
+#     contents: read
+#     pull-requests: write
+#     issues: write
+# Dependabot runs only get a read-only token unless the caller declares these.
+# Dependabot runs cannot read normal secrets, so there is no Slack here.
+#
+# Optional secret DEPENDABOT_ALERTS_TOKEN: a fine-grained PAT with Dependabot
+# alerts read and Pull requests read, stored as a Dependabot secret in the
+# caller repo and passed with `secrets: inherit` or explicitly. It replaces
+# the default GITHUB_TOKEN for the whole metadata action, which cannot read
+# alerts. When unset, alert lookup is off and the PR title is the only
+# security signal.
+
+on:
+  workflow_call:
+    secrets:
+      DEPENDABOT_ALERTS_TOKEN:
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: dependabot-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  assess:
+    name: Assess Dependabot update
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.DEPENDABOT_ALERTS_TOKEN || github.token }}
+          # Any non-empty value turns the lookup on, so the off state must be empty.
+          alert-lookup: ${{ secrets.DEPENDABOT_ALERTS_TOKEN != '' && 'true' || '' }}
+
+      - name: Assess update
+        id: assess
+        uses: joshuadavidnelson/.github/actions/dependabot-assess@v1
+        with:
+          dependencies-json: ${{ steps.metadata.outputs.updated-dependencies-json }}
+          pr-title: ${{ github.event.pull_request.title }}
+          alert-state: ${{ steps.metadata.outputs.alert-state }}
+          ghsa-id: ${{ steps.metadata.outputs.ghsa-id }}
+
+      - name: Upsert comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_FILE: ${{ steps.assess.outputs.comment-file }}
+        run: |
+          set -euo pipefail
+          # Only the Actions bot's own comment is edited, so a pasted marker
+          # from anyone else cannot redirect the update.
+          # Collect every match, then keep the first line; a pipe into head
+          # would close early and fail under pipefail.
+          ids="$(gh api --paginate "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- dependabot-check -->"))) | .id')"
+          id="${ids%%$'\n'*}"
+          if [[ -n "${id}" ]]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${id}" -F "body=@${COMMENT_FILE}" > /dev/null
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F "body=@${COMMENT_FILE}" > /dev/null
+          fi
+
+      - name: Set label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABEL: ${{ steps.assess.outputs.label }}
+        run: |
+          set -euo pipefail
+          gh label create "${LABEL}" --repo "${REPO}" --force \
+            --color "$(case "${LABEL}" in
+              "deps: low-risk") echo 0e8a16 ;;
+              "deps: review") echo fbca04 ;;
+              *) echo d93f0b ;;
+            esac)" > /dev/null
+          gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/labels" -f "labels[]=${LABEL}" > /dev/null
+          for other in "deps%3A%20low-risk" "deps%3A%20review" "deps%3A%20risky"; do
+            if [[ "${other//%3A%20/: }" != "${LABEL}" ]]; then
+              # A 404 means the label was not on the PR.
+              gh api --method DELETE "repos/${REPO}/issues/${PR_NUMBER}/labels/${other}" > /dev/null 2>&1 || true
+            fi
+          done

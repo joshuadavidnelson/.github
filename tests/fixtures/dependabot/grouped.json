@@ -1,0 +1,29 @@
+[
+  {
+    "dependencyName": "typescript",
+    "dependencyType": "direct:development",
+    "updateType": "version-update:semver-minor",
+    "directory": "/",
+    "packageEcosystem": "npm_and_yarn",
+    "prevVersion": "5.4.5",
+    "newVersion": "5.5.0"
+  },
+  {
+    "dependencyName": "express",
+    "dependencyType": "direct:production",
+    "updateType": "version-update:semver-major",
+    "directory": "/",
+    "packageEcosystem": "npm_and_yarn",
+    "prevVersion": "4.19.2",
+    "newVersion": "5.0.0"
+  },
+  {
+    "dependencyName": "lodash",
+    "dependencyType": "direct:production",
+    "updateType": "version-update:semver-patch",
+    "directory": "/",
+    "packageEcosystem": "npm_and_yarn",
+    "prevVersion": "4.17.20",
+    "newVersion": "4.17.21"
+  }
+]

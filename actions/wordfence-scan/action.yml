@@ -1,0 +1,73 @@
+name: Wordfence scan
+description: Check WordPress plugins, themes and core in composer.lock against the Wordfence Intelligence feed. Skips quietly when no API key is set.
+
+inputs:
+  api-key:
+    description: Wordfence Intelligence API key (free at wordfence.com/threat-intel). An empty value skips the scan.
+    required: true
+  composer-lock:
+    description: Path to composer.lock.
+    required: false
+    default: composer.lock
+  extra-slugs:
+    description: Extra packages to check, as space or newline separated plugin:slug@version or theme:slug@version entries.
+    required: false
+    default: ''
+  wp-core:
+    description: WordPress core version to check in addition to the lock file.
+    required: false
+    default: ''
+
+outputs:
+  status:
+    description: One of clean, findings, skipped, error.
+    value: ${{ steps.scan.outputs.status }}
+  count:
+    description: Number of findings, empty when skipped or on error.
+    value: ${{ steps.scan.outputs.count }}
+  json-file:
+    description: Path to the JSON summary, empty when skipped or on error.
+    value: ${{ steps.scan.outputs.json-file }}
+  report-file:
+    description: Path to the Markdown report, empty when skipped or on error.
+    value: ${{ steps.scan.outputs.report-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        WORDFENCE_API_KEY: ${{ inputs.api-key }}
+        COMPOSER_LOCK: ${{ inputs.composer-lock }}
+        EXTRA_SLUGS: ${{ inputs.extra-slugs }}
+        WP_CORE: ${{ inputs.wp-core }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ -z "$WORDFENCE_API_KEY" ]; then
+          echo "::notice::No Wordfence API key is set; skipping the Wordfence scan."
+          echo "status=skipped" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        out_dir="${RUNNER_TEMP}/wordfence"
+        mkdir -p "$out_dir"
+        code=0
+        python3 "$ACTION_PATH/wordfence_scan.py" "$COMPOSER_LOCK" \
+          --extra-slugs "$EXTRA_SLUGS" --wp-core "$WP_CORE" \
+          --report "${out_dir}/wordfence.md" --json "${out_dir}/wordfence.json" || code=$?
+        # Exit 1 means findings, which the caller decides how to report; only exit 2 is an error.
+        case "$code" in
+          0 | 1)
+            {
+              echo "status=$([ "$code" -eq 0 ] && echo clean || echo findings)"
+              echo "count=$(jq '.findings | length' "${out_dir}/wordfence.json")"
+              echo "json-file=${out_dir}/wordfence.json"
+              echo "report-file=${out_dir}/wordfence.md"
+            } >> "$GITHUB_OUTPUT"
+            ;;
+          *)
+            echo "::error::The Wordfence scan did not complete; the result is unknown."
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            ;;
+        esac

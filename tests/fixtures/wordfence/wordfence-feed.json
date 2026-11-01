@@ -1,0 +1,83 @@
+{
+	"11111111-0000-0000-0000-000000000001": {
+		"id": "11111111-0000-0000-0000-000000000001",
+		"title": "Redirection <= 5.10.1 - Stored XSS",
+		"software": [{
+			"type": "plugin", "name": "Redirection", "slug": "redirection",
+			"affected_versions": {"* - 5.10.1": {"from_version": "*", "from_inclusive": true, "to_version": "5.10.1", "to_inclusive": true}},
+			"patched": true, "patched_versions": ["5.10.2"]
+		}],
+		"cve": "CVE-2099-0001", "cvss": {"score": 6.4, "rating": "Medium"}
+	},
+	"11111111-0000-0000-0000-000000000002": {
+		"id": "11111111-0000-0000-0000-000000000002",
+		"title": "Redirection < 5.10.1 - Not affected, upper bound exclusive",
+		"software": [{
+			"type": "plugin", "slug": "redirection",
+			"affected_versions": {"* - 5.10.0": {"from_version": "*", "from_inclusive": true, "to_version": "5.10.1", "to_inclusive": false}},
+			"patched_versions": ["5.10.1"]
+		}]
+	},
+	"11111111-0000-0000-0000-000000000003": {
+		"id": "11111111-0000-0000-0000-000000000003",
+		"title": "Example Extra <= 2.0.3 - Extra package match",
+		"software": [{
+			"type": "plugin", "slug": "example-extra",
+			"affected_versions": {"1.0.0 - 2.0.3": {"from_version": "1.0.0", "from_inclusive": true, "to_version": "2.0.3", "to_inclusive": true}},
+			"patched_versions": []
+		}],
+		"cve": null
+	},
+	"11111111-0000-0000-0000-000000000004": {
+		"id": "11111111-0000-0000-0000-000000000004",
+		"title": "WordPress < 7.1.4 - Core, lower bound beyond locked version",
+		"software": [{
+			"type": "core", "slug": "wordpress",
+			"affected_versions": {"7.1.5 - *": {"from_version": "7.1.5", "from_inclusive": true, "to_version": "*", "to_inclusive": true}},
+			"patched_versions": []
+		}]
+	},
+	"11111111-0000-0000-0000-000000000005": {
+		"id": "11111111-0000-0000-0000-000000000005",
+		"title": "Yoast SEO >= 28.0 - Wildcard upper bound, leading v in lock",
+		"software": [{
+			"type": "plugin", "slug": "wordpress-seo",
+			"affected_versions": {"28.0 - *": {"from_version": "28.0", "from_inclusive": true, "to_version": "*", "to_inclusive": true}},
+			"patched_versions": ["29.0"]
+		}]
+	},
+	"11111111-0000-0000-0000-000000000006": {
+		"id": "11111111-0000-0000-0000-000000000006",
+		"title": "Twenty Twenty-Four theme with the same slug as a plugin",
+		"software": [{
+			"type": "plugin", "slug": "twentytwentyfour",
+			"affected_versions": {"* - *": {"from_version": "*", "from_inclusive": true, "to_version": "*", "to_inclusive": true}}
+		}]
+	},
+	"11111111-0000-0000-0000-000000000007": {
+		"id": "11111111-0000-0000-0000-000000000007",
+		"title": "Not deployed (dev package)",
+		"software": [{
+			"type": "plugin", "slug": "not-deployed",
+			"affected_versions": {"* - *": {"from_version": "*", "from_inclusive": true, "to_version": "*", "to_inclusive": true}}
+		}]
+	},
+	"11111111-0000-0000-0000-000000000008": {
+		"id": "11111111-0000-0000-0000-000000000008",
+		"title": "Two-Factor informational note",
+		"informational": true,
+		"software": [{
+			"type": "plugin", "slug": "two-factor",
+			"affected_versions": {"* - *": {"from_version": "*", "from_inclusive": true, "to_version": "*", "to_inclusive": true}}
+		}]
+	},
+	"11111111-0000-0000-0000-000000000009": {
+		"id": "11111111-0000-0000-0000-000000000009",
+		"title": "WordPress <= 7.1.4 - Core match, exclusive lower bound below locked version",
+		"software": [{
+			"type": "core", "slug": "wordpress",
+			"affected_versions": {"7.0 - 7.1.4": {"from_version": "7.0", "from_inclusive": false, "to_version": "7.1.4", "to_inclusive": true}},
+			"patched_versions": ["7.1.5"]
+		}]
+	}
+}

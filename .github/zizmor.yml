@@ -1,0 +1,7 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # First-party actions move with the v1 tag; everything else must be SHA-pinned.
+        "joshuadavidnelson/.github/*": ref-pin
+        "*": hash-pin

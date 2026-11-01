@@ -1,0 +1,23 @@
+# Drop into .github/workflows/ and replace __SHA__ with a full commit SHA of joshuadavidnelson/.github.
+# Set languages to match the repo, such as "actions,javascript-typescript". CodeQL has no PHP support.
+
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 2"
+
+permissions: {}
+
+jobs:
+  codeql:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: joshuadavidnelson/.github/.github/workflows/codeql.yml@__SHA__ # main
+    with:
+      languages: actions

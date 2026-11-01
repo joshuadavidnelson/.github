@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "Composer"
+      include: "scope"
+    groups:
+      wordpress-plugins-and-themes:
+        patterns:
+          - "wpackagist-plugin/*"
+          - "wpackagist-theme/*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Packages matching no group, such as WordPress core, stay individual PRs.
+    # Major bumps of plugins and themes also stay individual.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "Actions"

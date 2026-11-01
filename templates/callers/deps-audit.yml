@@ -1,0 +1,25 @@
+# Drop into .github/workflows/ and replace __SHA__ with a full commit SHA of joshuadavidnelson/.github.
+# WordPress sites: add "wordfence: true" under with: and keep the WORDFENCE_API_KEY secret.
+
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  deps-audit:
+    permissions:
+      contents: read
+      issues: write
+    uses: joshuadavidnelson/.github/.github/workflows/deps-audit.yml@__SHA__ # main
+    with:
+      slack-channel: ${{ vars.SLACK_CHANNEL }}
+    secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      WORDFENCE_API_KEY: ${{ secrets.WORDFENCE_API_KEY }}

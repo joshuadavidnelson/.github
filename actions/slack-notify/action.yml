@@ -1,0 +1,65 @@
+name: Slack notify
+description: Post a severity-routed message to Slack through a bot token. Skips quietly when no token is set.
+
+inputs:
+  token:
+    description: Slack bot token. An empty value skips the notification.
+    required: true
+  channel:
+    description: Project channel (ID or name). Receives warning and info messages.
+    required: false
+    default: ''
+  alerts-channel:
+    description: Channel for critical messages.
+    required: false
+    default: alerts
+  severity:
+    description: One of critical, warning, info.
+    required: false
+    default: info
+  title:
+    description: Message headline.
+    required: true
+  body:
+    description: Optional mrkdwn body for short text, clipped to fit Slack's section limit. Use body-file for scan output.
+    required: false
+    default: ''
+  body-file:
+    description: Path to a file holding the body. Read by the script, so large output avoids environment size limits. Takes precedence over body.
+    required: false
+    default: ''
+  link-url:
+    description: Button target. Defaults to the current run.
+    required: false
+    default: ''
+  link-text:
+    description: Button label.
+    required: false
+    default: View run
+
+outputs:
+  ts:
+    description: Message timestamp, empty when skipped.
+    value: ${{ steps.post.outputs.ts }}
+  channel:
+    description: Channel the message went to, empty when skipped.
+    value: ${{ steps.post.outputs.channel }}
+
+runs:
+  using: composite
+  steps:
+    - name: Post to Slack
+      id: post
+      shell: bash
+      env:
+        SLACK_BOT_TOKEN: ${{ inputs.token }}
+        SLACK_CHANNEL: ${{ inputs.channel }}
+        SLACK_ALERTS_CHANNEL: ${{ inputs.alerts-channel }}
+        SEVERITY: ${{ inputs.severity }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        BODY_FILE: ${{ inputs.body-file }}
+        LINK_URL: ${{ inputs.link-url }}
+        LINK_TEXT: ${{ inputs.link-text }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 "$ACTION_PATH/slack_notify.py"
