@@ -102,12 +102,21 @@ def in_range(version, rng):
 
 
 def _ranges(software):
+    """Return the affected ranges of one software entry, rejecting any other shape."""
     affected = software.get("affected_versions")
     if isinstance(affected, dict):
-        return [r for r in affected.values() if isinstance(r, dict)]
-    if isinstance(affected, list):
-        return [r for r in affected if isinstance(r, dict)]
-    return []
+        ranges = list(affected.values())
+    elif isinstance(affected, list):
+        ranges = affected
+    else:
+        raise ScanError("feed software entry has no affected_versions object")
+    for rng in ranges:
+        if not isinstance(rng, dict):
+            raise ScanError("feed affected range is not an object")
+        for bound in ("from_version", "to_version"):
+            if rng.get(bound) is not None and not isinstance(rng[bound], str):
+                raise ScanError(f"feed affected range has a non-string {bound}")
+    return ranges
 
 
 def load_packages(lock_path):
@@ -161,10 +170,20 @@ def _unique(packages):
 
 def _records(feed):
     if isinstance(feed, dict):
-        return list(feed.items())
-    if isinstance(feed, list):
-        return [(record.get("id", ""), record) for record in feed if isinstance(record, dict)]
-    raise ScanError("feed is neither a JSON object nor a list")
+        records = list(feed.items())
+    elif isinstance(feed, list):
+        records = [(record.get("id", "") if isinstance(record, dict) else "", record) for record in feed]
+    else:
+        raise ScanError("feed is neither a JSON object nor a list")
+    # An error body such as {"error": "Invalid API key"} is valid JSON but not a feed.
+    for _, record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("software"), list):
+            raise ScanError("feed contains a record without a software list")
+        for software in record["software"]:
+            if not isinstance(software, dict) or not isinstance(software.get("type"), str):
+                raise ScanError("feed contains a malformed software entry")
+            _ranges(software)
+    return records
 
 
 def find_vulnerabilities(feed, packages):
@@ -177,11 +196,7 @@ def find_vulnerabilities(feed, packages):
         wanted.setdefault((entry[0], entry[1]), []).append(entry)
     findings, skipped = [], 0
     for key, record in records:
-        if not isinstance(record, dict):
-            continue
-        for software in record.get("software") or []:
-            if not isinstance(software, dict):
-                continue
+        for software in record["software"]:
             # Core entries are keyed by type alone; the feed's core slug is "wordpress".
             kind, slug = software.get("type"), software.get("slug")
             if kind == "core":

@@ -12,7 +12,7 @@ Dependabot PRs are never merged automatically. `dependabot-check` comments a ver
 
 ## Slack routing
 
-Critical findings go to `#alerts`. Everything else goes to the project channel, named after the repo and set through the `SLACK_CHANNEL` repository variable. Pull request runs report through the check result only.
+High and critical scan findings go to `#alerts` as severity `critical`. Everything else goes to the project channel, named after the repo and set through the `SLACK_CHANNEL` repository variable. Pull request runs report through the check result only.
 
 ## Adopting in a repo
 
@@ -20,7 +20,7 @@ Critical findings go to `#alerts`. Everything else goes to the project channel, 
 2. Copy the matching file from `templates/dependabot/` to `.github/dependabot.yml`.
 3. Add the `SLACK_BOT_TOKEN` Actions secret and the `SLACK_CHANNEL` Actions variable.
 4. For WordPress sites, add the `WORDFENCE_API_KEY` Actions secret and set `wordfence: true` in the `deps-audit` caller.
-5. Optional: add `DEPENDABOT_ALERTS_TOKEN` as a Dependabot secret (a fine-grained token with Dependabot alerts read) so `dependabot-check` can flag security updates.
+5. Optional: add `DEPENDABOT_ALERTS_TOKEN` as a Dependabot secret (a fine-grained token with Dependabot alerts read and Pull requests read) so `dependabot-check` can flag security updates.
 6. Invite the bot to `#alerts` and the project channel.
 7. In the project channel, run `/github subscribe owner/repo` for repository activity.
 

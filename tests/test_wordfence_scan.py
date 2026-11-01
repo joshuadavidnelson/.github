@@ -238,7 +238,33 @@ class EndToEndTest(unittest.TestCase):
                     "affected_versions": {"a": {"from_version": 5, "to_version": "*"}}}]}}, handle)
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(self.run_scan(path)[0], 2)
-        self.assertIn("::error::", err.getvalue())
+        self.assertIn("non-string from_version", err.getvalue())
+
+    def test_wrong_shaped_feed_is_an_error_not_clean(self):
+        good_range = {"a": {"from_version": "*", "to_version": "*"}}
+        cases = {
+            "error body": {"error": "Invalid API key"},
+            "record is a list": {"x": ["not", "a", "record"]},
+            "list feed with a non-object": [1, 2],
+            "missing software": {"x": {"id": "x", "title": "T"}},
+            "software not a list": {"x": {"id": "x", "software": {"type": "plugin"}}},
+            "software entry not an object": {"x": {"id": "x", "software": ["redirection"]}},
+            "software without type": {"x": {"id": "x", "software": [{"slug": "redirection", "affected_versions": good_range}]}},
+            "missing affected_versions": {"x": {"id": "x", "software": [{"type": "plugin", "slug": "redirection"}]}},
+            "affected_versions a string": {"x": {"id": "x", "software": [{"type": "plugin", "slug": "redirection", "affected_versions": "all"}]}},
+            "range not an object": {"x": {"id": "x", "software": [{"type": "plugin", "slug": "redirection", "affected_versions": {"a": "1.0"}}]}},
+            "malformed range in an unrelated package": {"x": {"id": "x", "software": [{"type": "plugin", "slug": "other", "affected_versions": {"a": ["1.0"]}}]}},
+        }
+        for label, feed in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, "feed.json")
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(feed, handle)
+                with contextlib.redirect_stderr(io.StringIO()) as err:
+                    self.assertEqual(self.run_scan(path)[0], 2)
+                # A validation error, not the catch-all for an unexpected crash.
+                self.assertIn("feed", err.getvalue())
+                self.assertNotIn("crashed", err.getvalue())
 
     def test_corrupt_gzip_response_is_an_error(self):
         response = mock.MagicMock()

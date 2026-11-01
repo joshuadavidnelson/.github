@@ -11,6 +11,7 @@ import urllib.request
 API_URL = "https://slack.com/api/chat.postMessage"
 SECTION_LIMIT = 3000
 HEADER_LIMIT = 150
+BUTTON_LIMIT = 75
 CLIP_MARKER = "\n_... clipped_"
 MARKERS = {
     "critical": ":rotating_light:",
@@ -32,7 +33,10 @@ def escape(text):
 
 
 def is_web_url(url):
-    return urllib.parse.urlparse(url).scheme in ("http", "https")
+    try:
+        return urllib.parse.urlparse(url).scheme in ("http", "https")
+    except ValueError:
+        return False
 
 
 def pick_channel(severity, channel, alerts_channel):
@@ -65,7 +69,7 @@ def build_payload(channel, severity, title, body, repo, workflow, ref, link_url,
                 "elements": [
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": link_text or "View run"},
+                        "text": {"type": "plain_text", "text": clip(link_text or "View run", BUTTON_LIMIT, "...")},
                         "url": link_url,
                     }
                 ],

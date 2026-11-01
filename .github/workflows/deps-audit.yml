@@ -51,7 +51,7 @@ on:
         type: string
         default: ''
       alerts-channel:
-        description: Channel for critical messages.
+        description: Channel for high and critical findings, sent as severity critical.
         type: string
         default: alerts
     secrets:
@@ -226,7 +226,7 @@ jobs:
             } >> "${scan_dir}/body.md"
             jq -r '.advisories[]?[]? |
               "• `\(.packageName)` \(.affectedVersions): \(.title | gsub("[\\r\\n|`@<>&]"; " "))"' "$f" >> "${scan_dir}/slack.md"
-            jq -r '.advisories[]?[]? | "composer:\(.packageName):\(.advisoryId)"' "$f" >> "${scan_dir}/ids.txt"
+            jq -r '.advisories[]?[]? | "composer:\(.packageName):\(.advisoryId):\(.severity // "")"' "$f" >> "${scan_dir}/ids.txt"
             total=$((total + $(jq '[.advisories[]?[]?] | length' "$f")))
             high=$((high + $(jq '[.advisories[]?[]? | select((.severity // "") | ascii_downcase | IN("high", "critical"))] | length' "$f")))
           fi
@@ -242,7 +242,9 @@ jobs:
             } >> "${scan_dir}/body.md"
             jq -r '.vulnerabilities | to_entries[] |
               "• `\(.key | gsub("[\\r\\n|`<>&]"; " "))` \(.value.severity)"' "$f" >> "${scan_dir}/slack.md"
-            jq -r '.vulnerabilities | to_entries[] | "npm:\(.key):\(.value.severity)"' "$f" >> "${scan_dir}/ids.txt"
+            # Indirect entries stay in; their via list names the advisory or the package it came through.
+            jq -r '.vulnerabilities | to_entries[] |
+              "npm:\(.key):\(.value.severity):\(.value.range // ""):\([.value.via[]? | if type == "object" then (.source // .url // .title // "") | tostring else "via-" + . end] | unique | join(","))"' "$f" >> "${scan_dir}/ids.txt"
             total=$((total + $(jq '.metadata.vulnerabilities.total' "$f")))
             high=$((high + $(jq '(.metadata.vulnerabilities.high // 0) + (.metadata.vulnerabilities.critical // 0)' "$f")))
           fi
@@ -252,7 +254,7 @@ jobs:
             cat "$WORDFENCE_REPORT" >> "${scan_dir}/body.md"
             jq -r '.findings[] |
               "• `\(.package)` \(.version): \(.title | gsub("[\\r\\n|`@<>&]"; " "))"' "$f" >> "${scan_dir}/slack.md"
-            jq -r '.findings[] | "wordfence:\(.package):\(.version):\(.id)"' "$f" >> "${scan_dir}/ids.txt"
+            jq -r '.findings[] | "wordfence:\(.package):\(.version):\(.id):\(.cvss_score // "")"' "$f" >> "${scan_dir}/ids.txt"
             total=$((total + $(jq '.findings | length' "$f")))
             high=$((high + $(jq '[.findings[] | select((.cvss_score // 0) >= 7)] | length' "$f")))
           fi

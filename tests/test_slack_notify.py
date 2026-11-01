@@ -314,6 +314,17 @@ class ButtonTests(unittest.TestCase):
             types = [block["type"] for block in payload["blocks"]]
             self.assertNotIn("actions", types, url)
 
+    def test_malformed_url_omits_button_instead_of_raising(self):
+        for url in ("https://[broken", "http://[::1", "https://host:port]"):
+            types = [block["type"] for block in self.build(link_url=url)["blocks"]]
+            self.assertNotIn("actions", types, url)
+
+    def test_link_text_is_clipped_to_the_button_limit(self):
+        text = self.button(self.build(link_text="x" * 200))["text"]["text"]
+        self.assertEqual(len(text), 75)
+        self.assertTrue(text.endswith("..."))
+        self.assertEqual(self.button(self.build(link_text="y" * 75))["text"]["text"], "y" * 75)
+
     def test_http_and_https_links_kept(self):
         for url in ("http://example.com", "https://example.com"):
             types = [block["type"] for block in self.build(link_url=url)["blocks"]]

@@ -10,8 +10,9 @@ name: Dependabot check
 # Dependabot runs cannot read normal secrets, so there is no Slack here.
 #
 # Optional secret DEPENDABOT_ALERTS_TOKEN: a fine-grained PAT with Dependabot
-# alerts read, stored as a Dependabot secret in the caller repo and passed with
-# `secrets: inherit` or explicitly. The default GITHUB_TOKEN cannot read
+# alerts read and Pull requests read, stored as a Dependabot secret in the
+# caller repo and passed with `secrets: inherit` or explicitly. It replaces
+# the default GITHUB_TOKEN for the whole metadata action, which cannot read
 # alerts. When unset, alert lookup is off and the PR title is the only
 # security signal.
 
@@ -43,7 +44,8 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.DEPENDABOT_ALERTS_TOKEN || github.token }}
-          alert-lookup: ${{ secrets.DEPENDABOT_ALERTS_TOKEN != '' }}
+          # Any non-empty value turns the lookup on, so the off state must be empty.
+          alert-lookup: ${{ secrets.DEPENDABOT_ALERTS_TOKEN != '' && 'true' || '' }}
 
       - name: Assess update
         id: assess
